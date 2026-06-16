@@ -2,7 +2,9 @@
 from .site import BASE_URL, BRAND, PHONE, PHONE_DISPLAY
 
 # 실제 오프라인 매장 주소가 없으므로 LocalBusiness 대신 Organization 을 사용한다.
-_JSONLD = f"""<script type="application/ld+json">
+# 네이버 서치어드바이저 사이트 소유확인 메타태그(메인페이지에만 삽입).
+_JSONLD = f"""<meta name="naver-site-verification" content="44176af29c6d0b661818566816bcdb3a67642e40" />
+<script type="application/ld+json">
 {{
   "@context": "https://schema.org",
   "@type": "WebPage",
