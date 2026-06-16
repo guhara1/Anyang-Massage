@@ -59,8 +59,34 @@ python3 scripts/gen_thumbs.py   # assets/og/*.png + assets/og-image.png 재생�
 - 실제 오프라인 매장 주소가 없으므로 **LocalBusiness 대신 Organization Schema** 사용
 - 모든 페이지 본문은 페이지별 고유 작성 (지역명만 바꾼 복붙 없음)
 
+## 빠른 색인 / 인덱싱
+
+빌드(`python3 build.py`)가 색인 채널 4종을 함께 생성합니다.
+
+| 산출물 | 위치 | 용도 |
+|--------|------|------|
+| 사이트맵 | `/sitemap.xml` | `<lastmod>`·`<changefreq>`·`<priority>` 포함, 색인 32페이지 |
+| RSS 피드 | `/rss.xml` | 검색엔진·피드 리더 발견 보조(전 페이지 `<head>`에 자동 링크) |
+| robots | `/robots.txt` | 전체 허용 + Googlebot·Yeti(네이버)·bingbot·Daumoa 명시 + sitemap |
+| IndexNow 키 | `/<KEY>.txt` | 빙·네이버·얀덱스 즉시 색인 통보용 키 검증 파일 |
+
+### 글/페이지 올릴 때마다 (즉시 통보)
+```bash
+scripts/publish.sh                 # 빌드 + 전체 URL을 IndexNow로 통보
+scripts/publish.sh <url> [<url>]   # 특정 URL만 통보
+```
+- **IndexNow**(`scripts/indexnow.py`): 빙·네이버·얀덱스·세즈남에 한 번에 전파. `--dry-run` 지원.
+  배포(Cloudflare Pages)가 반영된 뒤 실행해야 `/<KEY>.txt` 검증이 통과합니다.
+- **구글**(`scripts/google_indexing.py`): 구글은 IndexNow 미참여. Indexing API는 공식적으로
+  JobPosting/BroadcastEvent 전용이라 일반 페이지 색인은 보장되지 않습니다. 일반 페이지의
+  정석은 Search Console 등록 → `sitemap.xml` 제출 → 필요 시 URL 검사 도구 색인 요청입니다.
+  (서비스 계정 설정 시 보조로 호출 가능 — 스크립트 상단 주석 참고.)
+- 참고: 구글·빙의 `sitemap ping` 엔드포인트는 2023년에 폐지되어 사용하지 않습니다.
+  IndexNow + Search Console/서치어드바이저 sitemap 제출이 그 자리를 대체합니다.
+
 ## 배포 전 해야 할 일
 
-1. `content/site.py`의 `BASE_URL`을 실제 도메인으로 변경
-2. `python3 build.py` 재실행 (canonical·sitemap·robots.txt에 반영됨)
-3. Google Search Console / 네이버 서치어드바이저에 `sitemap.xml` 제출
+1. `content/site.py`의 `BASE_URL`은 `https://anyang-massage.pages.dev` 로 설정됨(변경 시 재빌드)
+2. `python3 build.py` 재실행 (canonical·sitemap·rss·robots·IndexNow 키에 반영됨)
+3. 네이버 서치어드바이저·구글 Search Console 사이트 등록 후 `sitemap.xml`·`rss.xml` 제출
+4. 배포 반영 후 `scripts/publish.sh` 1회 실행으로 IndexNow 최초 통보
