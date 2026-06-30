@@ -4,6 +4,9 @@ Allow: /
 User-agent: Googlebot
 Allow: /
 
+User-agent: Googlebot-Image
+Allow: /
+
 User-agent: Yeti
 Allow: /
 
@@ -13,4 +16,5 @@ Allow: /
 User-agent: Daumoa
 Allow: /
 
-Sitemap: https://anyang-massage.pages.dev/sitemap.xml
+Sitemap: https://anyang-massage.netlify.app/sitemap.xml
+Sitemap: https://anyang-massage.netlify.app/rss.xml

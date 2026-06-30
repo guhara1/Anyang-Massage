@@ -377,6 +377,29 @@ strong { color: var(--gold-soft); font-weight: 700; }
   background: linear-gradient(180deg, #13203a, var(--panel-2));
 }
 
+/* 롱테일 내부링크 카드 — 지역명+키워드(강조) + 생활권 설명(보조) */
+.card-grid-rich {
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+}
+.card-grid-rich a {
+  text-align: left; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.card-grid-rich a strong {
+  font-family: var(--serif); font-weight: 700; font-size: 1.02rem;
+  letter-spacing: 0.01em; line-height: 1.3;
+}
+.card-grid-rich a span {
+  font-size: 0.82rem; color: var(--text-dim); letter-spacing: 0.01em;
+}
+.card-grid-rich a::after {
+  content: "방문 안내 →"; margin-top: 2px;
+  font-size: 0.76rem; color: var(--gold-soft); opacity: 0.65;
+  transition: 0.18s;
+}
+.card-grid-rich a:hover span { color: var(--gold-soft); }
+.card-grid-rich a:hover::after { opacity: 1; transform: translateX(3px); }
+
 /* 안내 박스 */
 .info-box {
   background: var(--panel-2); border: 1px solid var(--line-gold);

@@ -8,7 +8,7 @@
 
 사용법:
   python3 scripts/indexnow.py                # sitemap.xml 의 모든 URL 통보
-  python3 scripts/indexnow.py https://anyang-massage.pages.dev/anyang/manan/anyang-dong-chuljangmassage/
+  python3 scripts/indexnow.py https://anyang-massage.netlify.app/anyang/manan/anyang-dong-chuljangmassage/
   python3 scripts/indexnow.py --dry-run      # 전송 없이 페이로드만 출력
 
 엔드포인트는 api.indexnow.org 하나면 충분합니다(참여 엔진 전체로 전파됨).
