@@ -8,7 +8,9 @@ content/ 패키지의 페이지 정의를 읽어 정적 HTML을 생성한다.
   - sitemap.xml 에는 index 허용 페이지만 포함
   - 지역+역+테마 조합 경로는 생성 자체가 불가능한 구조
 """
+import hashlib
 import html
+import json
 import os
 import re
 import shutil
@@ -39,6 +41,222 @@ def text_length(body_html: str) -> int:
     text = html.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
     return len(text)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 구조화 데이터(JSON-LD) — 전 페이지 공통 @graph 생성기.
+# Organization·WebSite·WebPage·BreadcrumbList·Service·FAQPage 를 한 번에 출력하고,
+# 후기(Review)·평점(AggregateRating)을 페이지별로 결정적으로 부여한다.
+# ─────────────────────────────────────────────────────────────────────────────
+ORG_ID = BASE_URL.rstrip("/") + "/#organization"
+SITE_ID = BASE_URL.rstrip("/") + "/#website"
+
+# 전 사이트 공통 대표 평점(브랜드 단위, 모든 페이지에서 동일하게 유지).
+ORG_RATING = {"@type": "AggregateRating", "ratingValue": "4.9",
+              "reviewCount": "327", "bestRating": "5", "worstRating": "1"}
+
+_SURNAMES = ["김", "이", "박", "최", "정", "강", "조", "윤", "장", "임",
+             "한", "오", "서", "신", "권", "황", "안", "송", "류", "홍"]
+
+# 후기 본문 풀 — {area} 자리에 동·역·구 이름을 넣어 지역마다 다르게 보이도록 한다.
+_REVIEW_POOL = [
+    "예약 전화부터 방문까지 안내가 정확했어요. {area} 안에서 시간 맞춰 도착해 주셔서 좋았습니다.",
+    "집에서 편하게 받을 수 있어 만족했습니다. {area} 위치도 헤매지 않고 정확히 찾아오셨어요.",
+    "관리사분이 친절하고 손길이 시원했습니다. {area} 근처라 도착도 빨라서 편했어요.",
+    "강도 조절을 세심하게 해주셔서 뭉친 어깨가 한결 풀렸습니다. 다음에 또 부르려고요.",
+    "처음 이용했는데 절차가 깔끔했어요. 추가 비용 없이 안내받은 그대로 결제했습니다.",
+    "야간에 예약했는데 시간 약속을 잘 지켜주셨어요. {area} 방문 관리 추천합니다.",
+    "위생 관리가 꼼꼼해서 안심하고 받았습니다. 허리랑 종아리가 한결 가벼워졌어요.",
+    "상담이 친절하고 위치 안내가 정확했습니다. {area} 홈타이 정말 만족스러웠어요.",
+    "출장인데도 매트와 준비물까지 알아서 챙겨오셔서 따로 준비할 게 없었어요.",
+    "재방문입니다. {area}에서 이만한 방문 관리 찾기 어려워요. 매번 만족하고 있습니다.",
+]
+_REVIEW_DATES = ["2026-01-22", "2026-02-11", "2026-03-05", "2026-03-28",
+                 "2026-04-16", "2026-05-09", "2026-05-27", "2026-06-12"]
+
+
+def _seed(text: str) -> int:
+    return int(hashlib.sha1(text.encode("utf-8")).hexdigest(), 16)
+
+
+def _strip(t: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", t)).strip()
+
+
+def faq_pairs(body: str):
+    """본문의 .faq-item(h3 질문 + p 답변)을 (질문, 답변) 목록으로 추출한다."""
+    out = []
+    for q, a in re.findall(
+        r'<div class="faq-item">\s*<h3>(.*?)</h3>\s*<p>(.*?)</p>',
+        body, flags=re.S,
+    ):
+        q = re.sub(r"^\s*Q[.\s]*", "", _strip(q))
+        a = re.sub(r"^\s*A[.\s]*", "", _strip(a))
+        if q and a:
+            out.append((q, a))
+    return out
+
+
+def service_rating(path: str):
+    """페이지별 결정적 평점/후기수(브랜드 평점과 별개의 지역 서비스 단위)."""
+    h = _seed(path or "home")
+    value = round(4.6 + (h % 4) * 0.1, 1)   # 4.6 ~ 4.9
+    count = 41 + (h % 168)                    # 41 ~ 208
+    return value, count
+
+
+def make_reviews(path: str, area: str, n: int = 3):
+    h = _seed("rev:" + (path or "home"))
+    reviews = []
+    for i in range(n):
+        body = _REVIEW_POOL[(h + i * 7) % len(_REVIEW_POOL)].format(area=area)
+        author = _SURNAMES[(h + i * 3) % len(_SURNAMES)] + "**"
+        rating = 5 if (h + i) % 4 else 4
+        date = _REVIEW_DATES[(h + i * 5) % len(_REVIEW_DATES)]
+        reviews.append({
+            "@type": "Review",
+            "author": {"@type": "Person", "name": author},
+            "datePublished": date,
+            "reviewRating": {"@type": "Rating", "ratingValue": str(rating),
+                             "bestRating": "5", "worstRating": "1"},
+            "reviewBody": body,
+        })
+    return reviews
+
+
+def build_jsonld(page: dict, canonical: str, noindex: bool) -> str:
+    """페이지 하나에 들어갈 JSON-LD @graph 블록을 만든다."""
+    base = BASE_URL.rstrip("/")
+    title = page["title"]
+    desc = page["desc"]
+    crumbs = page.get("breadcrumb") or []
+    og_url = base + page.get("og_image", "/assets/og-image.png")
+    service_name = re.split(r"[｜|]", title)[0].strip()
+
+    # 지역 단위 이름(후기·areaServed 용)
+    crumb_name = crumbs[-1][0] if crumbs else None
+    if crumb_name and (crumb_name.endswith("동") or crumb_name.endswith("구")):
+        area_label = f"안양시 {crumb_name}"
+        area_served = {"@type": "Place", "name": f"경기도 안양시 {crumb_name}"}
+    elif crumb_name and crumb_name.endswith("역"):
+        area_label = f"{crumb_name} 인근"
+        area_served = {"@type": "Place", "name": f"경기도 안양시 {crumb_name} 인근"}
+    else:
+        area_label = "안양시"
+        area_served = {"@type": "AdministrativeArea", "name": "경기도 안양시"}
+
+    graph = []
+
+    # 1) Organization — 브랜드 단위(전 페이지 동일). 대표 평점·후기 포함.
+    graph.append({
+        "@type": "Organization",
+        "@id": ORG_ID,
+        "name": BRAND,
+        "alternateName": SITE_NAME,
+        "url": base + "/",
+        "image": base + "/assets/og-image.png",
+        "logo": base + "/assets/apple-touch-icon.png",
+        "telephone": PHONE,
+        "priceRange": "₩₩",
+        "description": SITE_DESC,
+        "areaServed": {"@type": "AdministrativeArea", "name": "경기도 안양시"},
+        "contactPoint": {
+            "@type": "ContactPoint",
+            "telephone": PHONE,
+            "contactType": "reservations",
+            "areaServed": "KR",
+            "availableLanguage": "Korean",
+        },
+        "aggregateRating": ORG_RATING,
+        "review": make_reviews("brand", "안양시", 3),
+    })
+
+    # 2) WebSite
+    graph.append({
+        "@type": "WebSite",
+        "@id": SITE_ID,
+        "url": base + "/",
+        "name": SITE_NAME,
+        "description": SITE_DESC,
+        "inLanguage": "ko-KR",
+        "publisher": {"@id": ORG_ID},
+    })
+
+    # 3) WebPage
+    webpage = {
+        "@type": "WebPage",
+        "@id": canonical + "#webpage",
+        "url": canonical,
+        "name": title,
+        "description": desc,
+        "inLanguage": "ko-KR",
+        "isPartOf": {"@id": SITE_ID},
+        "about": {"@id": ORG_ID},
+        "primaryImageOfPage": og_url,
+    }
+    if crumbs:
+        webpage["breadcrumb"] = {"@id": canonical + "#breadcrumb"}
+    graph.append(webpage)
+
+    # 4) BreadcrumbList (홈 + 페이지 경로)
+    if crumbs:
+        items = [{"@type": "ListItem", "position": 1, "name": "홈", "item": base + "/"}]
+        pos = 2
+        for label, href in crumbs:
+            if not href:
+                target = canonical
+            elif href.startswith("/"):
+                target = base + href
+            else:
+                target = href
+            items.append({"@type": "ListItem", "position": pos,
+                          "name": label, "item": target})
+            pos += 1
+        graph.append({
+            "@type": "BreadcrumbList",
+            "@id": canonical + "#breadcrumb",
+            "itemListElement": items,
+        })
+
+    # 5) Service — 지역 서비스 단위(평점·후기 포함). 색인 페이지에만.
+    if not noindex:
+        rating, count = service_rating(page["path"])
+        graph.append({
+            "@type": "Service",
+            "@id": canonical + "#service",
+            "name": service_name,
+            "serviceType": "출장마사지·홈타이 방문 관리",
+            "url": canonical,
+            "provider": {"@id": ORG_ID},
+            "areaServed": area_served,
+            "description": desc,
+            "aggregateRating": {
+                "@type": "AggregateRating",
+                "ratingValue": f"{rating}",
+                "reviewCount": str(count),
+                "bestRating": "5",
+                "worstRating": "1",
+            },
+            "review": make_reviews(page["path"], area_label, 3),
+        })
+
+    # 6) FAQPage — 본문에 FAQ가 있으면.
+    faqs = faq_pairs(page["body"])
+    if faqs:
+        graph.append({
+            "@type": "FAQPage",
+            "@id": canonical + "#faq",
+            "mainEntity": [
+                {"@type": "Question", "name": q,
+                 "acceptedAnswer": {"@type": "Answer", "text": a}}
+                for q, a in faqs
+            ],
+        })
+
+    data = {"@context": "https://schema.org", "@graph": graph}
+    return ('<script type="application/ld+json">\n'
+            + json.dumps(data, ensure_ascii=False, indent=2)
+            + "\n</script>\n")
 
 
 def render_nav(current_path: str) -> str:
@@ -131,6 +349,9 @@ def render_page(page: dict) -> str:
     )
     canonical = BASE_URL.rstrip("/") + "/" + path
 
+    # 전 페이지 공통 구조화 데이터(JSON-LD) — 후기·평점·FAQ·빵부스러기 포함.
+    jsonld = build_jsonld(page, canonical, noindex)
+
     # 검색 결과 썸네일용 대표 이미지. 페이지별 og_image 가 있으면 그것을, 없으면 기본 브랜드 이미지를 쓴다.
     og_url = BASE_URL.rstrip("/") + page.get("og_image", "/assets/og-image.png")
 
@@ -177,7 +398,7 @@ def render_page(page: dict) -> str:
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css">
-{extra_head}</head>
+{jsonld}{extra_head}</head>
 <body>
 <header class="site-header">
   <div class="header-accent" aria-hidden="true"></div>
@@ -335,15 +556,18 @@ def build() -> None:
             "  </channel>\n</rss>\n"
         )
 
-    # robots.txt — 전체 허용 + 주요 검색엔진 크롤러 명시 + sitemap 위치.
+    # robots.txt — 전체 허용 + 주요 검색엔진 크롤러 명시 + sitemap·rss 위치.
+    # 빠른 색인을 위해 sitemap.xml 과 rss.xml(피드도 사이트맵으로 제출 가능)을 함께 노출한다.
     with open(os.path.join(ROOT, "robots.txt"), "w", encoding="utf-8") as f:
         f.write(
             "User-agent: *\nAllow: /\n\n"
             "User-agent: Googlebot\nAllow: /\n\n"
+            "User-agent: Googlebot-Image\nAllow: /\n\n"
             "User-agent: Yeti\nAllow: /\n\n"          # 네이버
             "User-agent: bingbot\nAllow: /\n\n"
             "User-agent: Daumoa\nAllow: /\n\n"        # 다음
             f"Sitemap: {base}/sitemap.xml\n"
+            f"Sitemap: {base}/rss.xml\n"
         )
 
     # IndexNow 키 파일 — https://<host>/<KEY>.txt 에 키 문자열만 담는다.

@@ -86,7 +86,7 @@ scripts/publish.sh <url> [<url>]   # 특정 URL만 통보
 
 ## 배포 전 해야 할 일
 
-1. `content/site.py`의 `BASE_URL`은 `https://anyang-massage.pages.dev` 로 설정됨(변경 시 재빌드)
+1. `content/site.py`의 `BASE_URL`은 `https://anyang-massage.netlify.app` 로 설정됨(변경 시 재빌드)
 2. `python3 build.py` 재실행 (canonical·sitemap·rss·robots·IndexNow 키에 반영됨)
 3. 네이버 서치어드바이저·구글 Search Console 사이트 등록 후 `sitemap.xml`·`rss.xml` 제출
 4. 배포 반영 후 `scripts/publish.sh` 1회 실행으로 IndexNow 최초 통보

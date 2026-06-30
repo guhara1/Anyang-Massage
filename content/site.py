@@ -1,5 +1,5 @@
-# 사이트 공통 설정 — 배포 도메인: Cloudflare Pages
-BASE_URL = "https://anyang-massage.pages.dev"
+# 사이트 공통 설정 — 배포 도메인: Netlify
+BASE_URL = "https://anyang-massage.netlify.app"
 
 BRAND = "간다GO"
 PHONE = "0508-202-4719"
